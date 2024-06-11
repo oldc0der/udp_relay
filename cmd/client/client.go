@@ -6,78 +6,96 @@ import (
 	"math/rand"
 	"net"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 )
 
 var (
-	serverAddr = flag.String("addr", "0.0.0.0:12345", "remote server address")
-	sendLock   sync.Mutex
+	serverAddr   = flag.String("addr", "0.0.0.0:12345", "remote server address")
+	pktLen       = flag.Int("pktLen", 256, "send packet length")
+	sendLock     sync.Mutex
+	globalConn   *net.UDPConn
+	lastRecvTime time.Time
 )
 
 const (
-	recvBufLen   = 2048
+	agingTime    = 5 * time.Second
 	keepAliveMsg = "keepalive"
 )
 
 func main() {
 	flag.Parse()
+	connToServer()
 
+	defer globalConn.Close()
+
+	go keepAlive()
+	go sendMsg()
+	recvMsg()
+}
+
+func connToServer() {
 	udpAddr, err := net.ResolveUDPAddr("udp", *serverAddr)
 	if err != nil {
 		fmt.Println("Error resolving UDP address:", err)
 		os.Exit(1)
 	}
 
-	conn, err := net.DialUDP("udp", nil, udpAddr)
+	globalConn, err = net.DialUDP("udp", nil, udpAddr)
 	if err != nil {
 		fmt.Println("Error connecting:", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
-
-	go keepAlive(conn)
-	go sendMsg(conn)
-	recvMsg(conn)
 }
 
-func keepAlive(conn *net.UDPConn) {
+func keepAlive() {
 	for {
 		sendLock.Lock()
-		_, err := conn.Write([]byte(keepAliveMsg))
+		_, err := globalConn.Write([]byte(keepAliveMsg))
 		if err != nil {
 			fmt.Println("Error sending:", err)
 		}
 		sendLock.Unlock()
 		time.Sleep(5 * time.Second)
+
+		curTime := time.Now()
+		dur := curTime.Sub(lastRecvTime)
+		if dur > agingTime {
+			globalConn.Close()
+			fmt.Println("Reconnect to server ... ")
+			connToServer()
+		}
 	}
 }
 
-func sendMsg(conn *net.UDPConn) {
-	i := rand.Intn(100)
+func sendMsg() {
+	seq := rand.Intn(26)
+	msg := make([]byte, *pktLen)
+	for i := 0; i < len(msg); i++ {
+		msg[i] = 'A' + byte(seq)
+	}
 	for {
-		msg := strconv.Itoa(i)
 		sendLock.Lock()
-		_, err := conn.Write([]byte(msg))
+		_, err := globalConn.Write([]byte(msg))
 		if err != nil {
 			fmt.Println("Error sending:", err)
 		}
 		sendLock.Unlock()
-		fmt.Printf("SEND %s\n", msg)
-		i++
+		fmt.Printf("SEND %s\n", string(msg[0]))
+		seq++
 		time.Sleep(1 * time.Second)
 	}
 }
 
-func recvMsg(conn *net.UDPConn) {
+func recvMsg() {
 	for {
-		recvBuf := make([]byte, recvBufLen)
-		_, _, err := conn.ReadFromUDP(recvBuf)
+		recvBuf := make([]byte, *pktLen)
+		_, _, err := globalConn.ReadFromUDP(recvBuf)
 		if err != nil {
 			fmt.Println("Error reading:", err)
 			continue
 		}
+		lastRecvTime = time.Now()
 
 		fmt.Printf("RECV: %s\n", recvBuf)
 	}
