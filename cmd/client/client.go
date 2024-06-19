@@ -21,6 +21,7 @@ var (
 const (
 	agingTime    = 5 * time.Second
 	keepAliveMsg = "keepalive"
+	recvBufLen   = 64 * 1024
 )
 
 func main() {
@@ -89,10 +90,10 @@ func sendMsg() {
 
 func recvMsg() {
 	for {
-		recvBuf := make([]byte, *pktLen)
-		_, _, err := globalConn.ReadFromUDP(recvBuf)
+		recvBuf := make([]byte, recvBufLen)
+		n, _, err := globalConn.ReadFromUDP(recvBuf)
 		if err != nil {
-			fmt.Println("Error reading:", err)
+			fmt.Printf("ReadFromUDP failed: %d, %v\n", n, err)
 			continue
 		}
 		lastRecvTime = time.Now()
