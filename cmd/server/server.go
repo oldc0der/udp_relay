@@ -88,17 +88,18 @@ func sendToOtherClients(conn *net.UDPConn, clientAddr *net.UDPAddr, buf []byte) 
 	msg := []byte(fmt.Sprintf("From [%s]: %s", clientAddr, buf))
 
 	for key := range connTrack {
-		if key == clientAddr.String() {
-			continue
-		}
+		// if key == clientAddr.String() {
+		// 	continue
+		// }
 
-		udpAddr, err := net.ResolveUDPAddr("udp", key)
+		// fmt.Printf("Send to [%v]\n", key)
+		remoteAddr, err := net.ResolveUDPAddr("udp", key)
 		if err != nil {
 			fmt.Println("Error resolving UDP address:", err)
 			continue
 		}
 
-		_, err = conn.WriteToUDP(msg, udpAddr)
+		_, err = conn.WriteToUDP(msg, remoteAddr)
 		if err != nil {
 			fmt.Println("Error sending:", err)
 		}
